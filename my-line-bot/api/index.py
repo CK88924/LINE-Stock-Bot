@@ -34,6 +34,10 @@ logging.basicConfig(level=logging.INFO)
 configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
+@app.get("/")
+async def root():
+    return JSONResponse(content={"status": "alive", "message": "LINE Stock Bot is running"})
+
 @app.post("/api/index.py")
 @app.post("/")
 async def callback(request: Request):
