@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 async def fetch_yahoo_finance(session: aiohttp.ClientSession, stock_id: str) -> dict:
-    """1. 去 Yahoo 抓取真實股價與成交量 (使用最穩定的 v8/chart 端點)"""
+    """1. 去 Yahoo 抓取真實股價與成交量"""
     suffixes = [".TW", ".TWO"]
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
@@ -15,45 +15,37 @@ async def fetch_yahoo_finance(session: aiohttp.ClientSession, stock_id: str) -> 
                 if response.status == 200:
                     data = await response.json()
                     chart_result = data.get("chart", {}).get("result", [])
-                    if not chart_result:
-                        continue
-                        
+                    if not chart_result: continue
                     meta = chart_result[0].get("meta", {})
                     price = meta.get("regularMarketPrice", 0.0)
-                    if not price or price == 0.0:
-                        continue
-                        
-                    volume = meta.get("regularMarketVolume", 0)
-                    return {"price": price, "volume": volume}
-        except Exception as e:
-            print(f"Yahoo API Error for {yahoo_symbol}: {e}")
+                    if price == 0.0: continue
+                    return {"price": price, "volume": meta.get("regularMarketVolume", 0)}
+        except Exception:
             continue
     return {} 
 
 async def fetch_finmind_inst_buy(session: aiohttp.ClientSession, stock_id: str) -> int:
-    """2. 去 FinMind 抓取投信買賣超"""
+    """2. 去 FinMind 抓取投信買賣超 (防呆：專抓投信有交易的最後一天)"""
     try:
         tz_tw = timezone(timedelta(hours=8))
         today = datetime.now(tz_tw)
+        # 拉長到 14 天，避免遇到農曆新年等長假
+        start_date = (today - timedelta(days=14)).strftime("%Y-%m-%d")
         end_date = today.strftime("%Y-%m-%d")
-        start_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-        
         url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id={stock_id}&start_date={start_date}&end_date={end_date}"
+        
         async with session.get(url, timeout=5) as response:
             if response.status == 200:
                 data = await response.json()
                 records = data.get("data", [])
-                if not records:
-                    return 0
                 
-                # 💡 修正：強制掃描找出最晚的日期，不依賴陣列最後一筆
-                latest_date = max([r["date"] for r in records])
-                net_buy = 0
+                # 💡 終極修正：只挑出「投信」的紀錄，然後找出投信有交易的最新日期
+                trust_records = [r for r in records if r.get("name") == "Investment_Trust"]
+                if not trust_records: return 0
                 
-                for row in records:
-                    if row["date"] == latest_date and row["name"] == "Investment_Trust":
-                        net_buy += (row.get("buy", 0) - row.get("sell", 0)) / 1000
-                return int(net_buy)
+                latest_date = max([r["date"] for r in trust_records])
+                net_buy = sum([(r.get("buy", 0) - r.get("sell", 0)) for r in trust_records if r["date"] == latest_date])
+                return int(net_buy / 1000)
     except Exception as e:
         print(f"FinMind InstBuy Error: {e}")
     return 0 
@@ -62,65 +54,55 @@ async def fetch_finmind_revenue(session: aiohttp.ClientSession, stock_id: str) -
     """3. 去 FinMind 抓取最新月營收 YoY"""
     try:
         tz_tw = timezone(timedelta(hours=8))
-        # 💡 修正：抓過去 400 天，確保能拿到「去年同月」的資料來相除
         start_date = (datetime.now(tz_tw) - timedelta(days=400)).strftime("%Y-%m-%d")
         url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id={stock_id}&start_date={start_date}"
-        
         async with session.get(url, timeout=5) as response:
             if response.status == 200:
                 data = await response.json()
                 records = data.get("data", [])
                 if records:
-                    # 最新一個月的資料
                     latest = records[-1]
-                    latest_year = latest.get("revenue_year")
-                    latest_month = latest.get("revenue_month")
-                    latest_rev = latest.get("revenue", 0)
-                    
-                    # 往前找去年同月的資料
-                    last_year_rev = 0
-                    for row in records:
-                        if row.get("revenue_year") == latest_year - 1 and row.get("revenue_month") == latest_month:
-                            last_year_rev = row.get("revenue", 0)
-                            break
-                            
+                    latest_year, latest_month, latest_rev = latest.get("revenue_year"), latest.get("revenue_month"), latest.get("revenue", 0)
+                    last_year_rev = next((r.get("revenue", 0) for r in records if r.get("revenue_year") == latest_year - 1 and r.get("revenue_month") == latest_month), 0)
                     if last_year_rev > 0:
                         return round(((latest_rev - last_year_rev) / last_year_rev) * 100, 2)
-    except Exception as e:
-        print(f"FinMind Revenue Error: {e}")
+    except Exception:
+        pass
     return 0.0
 
 async def fetch_finmind_margin(session: aiohttp.ClientSession, stock_id: str) -> float:
-    """4. 去 FinMind 抓取最新季財報計算毛利率"""
+    """4. 去 FinMind 抓取最新季財報計算毛利率 (防呆：中英文科目通殺)"""
     try:
         tz_tw = timezone(timedelta(hours=8))
-        start_date = (datetime.now(tz_tw) - timedelta(days=240)).strftime("%Y-%m-%d")
+        start_date = (datetime.now(tz_tw) - timedelta(days=365)).strftime("%Y-%m-%d")
         url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id={stock_id}&start_date={start_date}"
         
         async with session.get(url, timeout=5) as response:
             if response.status == 200:
                 data = await response.json()
                 records = data.get("data", [])
-                if not records:
-                    return 0.0
-                    
-                latest_date = max([r["date"] for r in records])
-                revenue = 0
-                gross_profit = 0
+                if not records: return 0.0
                 
-                for row in records:
-                    if row["date"] == latest_date:
-                        t = row.get("type", "")
-                        # 💡 修正：使用模糊匹配 (in)，躲過括號跟全半形名稱的地雷
-                        if "營業收入" in t and "淨" not in t:
-                            revenue = row.get("value", 0)
-                        if "毛利" in t:
-                            gross_profit = row.get("value", 0)
-                            
-                if revenue > 0:
-                    return round((gross_profit / revenue) * 100, 2)
-    except Exception as e:
-        print(f"FinMind Margin Error: {e}")
+                # 將所有有資料的日期由新到舊排序
+                dates = sorted(list(set([r["date"] for r in records])), reverse=True)
+                
+                # 💡 終極修正：中英文可能出現的科目名稱通通放進來比對
+                rev_keys = ["營業收入", "營業收入淨額", "OperatingRevenue", "Revenue"]
+                margin_keys = ["營業毛利（毛損）", "營業毛利", "營業毛利（毛損）淨額", "GrossProfit"]
+                
+                # 從最新的財報季開始找，只要找到有營收和毛利的季就立刻結算
+                for d in dates:
+                    revenue = 0
+                    gross_profit = 0
+                    for r in records:
+                        if r["date"] == d:
+                            t = r.get("type", "")
+                            if t in rev_keys: revenue = r.get("value", 0)
+                            if t in margin_keys: gross_profit = r.get("value", 0)
+                    if revenue > 0:
+                        return round((gross_profit / revenue) * 100, 2)
+    except Exception:
+        pass
     return 0.0
 
 async def fetch_stock_info(stock_id: str) -> dict:
@@ -128,28 +110,17 @@ async def fetch_stock_info(stock_id: str) -> dict:
     is_etf = stock_id.startswith("00")
     
     async with aiohttp.ClientSession() as session:
-        # 基本班底：股價與投信買超
-        tasks = [
-            fetch_yahoo_finance(session, stock_id),
-            fetch_finmind_inst_buy(session, stock_id)
-        ]
-        
-        # 如果是個股，追加兩台車去抓真實財報
+        tasks = [fetch_yahoo_finance(session, stock_id), fetch_finmind_inst_buy(session, stock_id)]
         if not is_etf:
-            tasks.append(fetch_finmind_revenue(session, stock_id))
-            tasks.append(fetch_finmind_margin(session, stock_id))
+            tasks.extend([fetch_finmind_revenue(session, stock_id), fetch_finmind_margin(session, stock_id)])
             
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
         yahoo_data = results[0] if isinstance(results[0], dict) else {}
         inst_buy = results[1] if isinstance(results[1], int) else 0
         
-        if not yahoo_data:
-            return {}
+        if not yahoo_data: return {}
             
-        revenue_yoy = 0.0
-        gross_margin = 0.0
-        
+        revenue_yoy, gross_margin = 0.0, 0.0
         if not is_etf:
             revenue_yoy = results[2] if isinstance(results[2], float) else 0.0
             gross_margin = results[3] if isinstance(results[3], float) else 0.0
