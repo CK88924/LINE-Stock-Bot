@@ -40,10 +40,10 @@ async def root():
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    # favicon is stored at ../public/favicon.ico relative to this index.py file
-    favicon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public", "favicon.ico")
+    # favicon is stored directly in the api folder at api/favicon.ico
+    favicon_path = os.path.join(os.path.dirname(__file__), "favicon.ico")
     if os.path.exists(favicon_path):
-        return FileResponse(favicon_path)
+        return FileResponse(favicon_path, media_type="image/x-icon")
     return JSONResponse(status_code=404, content={"message": "Favicon not found"})
 
 @app.post("/api/index.py")
