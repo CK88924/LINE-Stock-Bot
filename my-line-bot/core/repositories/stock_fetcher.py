@@ -45,9 +45,11 @@ async def fetch_finmind_inst_buy(session: aiohttp.ClientSession, stock_id: str) 
                 records = data.get("data", [])
                 if not records:
                     return 0
-                    
-                latest_date = records[-1]["date"]
+                
+                # 💡 修正：強制掃描找出最晚的日期，不依賴陣列最後一筆
+                latest_date = max([r["date"] for r in records])
                 net_buy = 0
+                
                 for row in records:
                     if row["date"] == latest_date and row["name"] == "Investment_Trust":
                         net_buy += (row.get("buy", 0) - row.get("sell", 0)) / 1000
@@ -60,8 +62,8 @@ async def fetch_finmind_revenue(session: aiohttp.ClientSession, stock_id: str) -
     """3. 去 FinMind 抓取最新月營收 YoY"""
     try:
         tz_tw = timezone(timedelta(hours=8))
-        # 抓過去 4 個月，確保能拿到最新公佈的月份
-        start_date = (datetime.now(tz_tw) - timedelta(days=120)).strftime("%Y-%m-%d")
+        # 💡 修正：抓過去 400 天，確保能拿到「去年同月」的資料來相除
+        start_date = (datetime.now(tz_tw) - timedelta(days=400)).strftime("%Y-%m-%d")
         url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id={stock_id}&start_date={start_date}"
         
         async with session.get(url, timeout=5) as response:
@@ -69,12 +71,21 @@ async def fetch_finmind_revenue(session: aiohttp.ClientSession, stock_id: str) -
                 data = await response.json()
                 records = data.get("data", [])
                 if records:
+                    # 最新一個月的資料
                     latest = records[-1]
-                    rev = latest.get("revenue", 0)
-                    rev_last_year = latest.get("revenue_month_last_year", 0)
-                    if rev_last_year > 0:
-                        # 計算 YoY 百分比: ((當月 - 去年同月) / 去年同月) * 100
-                        return round(((rev - rev_last_year) / rev_last_year) * 100, 2)
+                    latest_year = latest.get("revenue_year")
+                    latest_month = latest.get("revenue_month")
+                    latest_rev = latest.get("revenue", 0)
+                    
+                    # 往前找去年同月的資料
+                    last_year_rev = 0
+                    for row in records:
+                        if row.get("revenue_year") == latest_year - 1 and row.get("revenue_month") == latest_month:
+                            last_year_rev = row.get("revenue", 0)
+                            break
+                            
+                    if last_year_rev > 0:
+                        return round(((latest_rev - last_year_rev) / last_year_rev) * 100, 2)
     except Exception as e:
         print(f"FinMind Revenue Error: {e}")
     return 0.0
@@ -83,7 +94,6 @@ async def fetch_finmind_margin(session: aiohttp.ClientSession, stock_id: str) ->
     """4. 去 FinMind 抓取最新季財報計算毛利率"""
     try:
         tz_tw = timezone(timedelta(hours=8))
-        # 抓過去 8 個月，確保能拿到最新一季的財報
         start_date = (datetime.now(tz_tw) - timedelta(days=240)).strftime("%Y-%m-%d")
         url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id={stock_id}&start_date={start_date}"
         
@@ -94,21 +104,20 @@ async def fetch_finmind_margin(session: aiohttp.ClientSession, stock_id: str) ->
                 if not records:
                     return 0.0
                     
-                latest_date = records[-1]["date"]
+                latest_date = max([r["date"] for r in records])
                 revenue = 0
                 gross_profit = 0
                 
                 for row in records:
                     if row["date"] == latest_date:
                         t = row.get("type", "")
-                        # 匹配台灣財報科目名稱
-                        if t in ["營業收入", "營業收入淨額"]:
+                        # 💡 修正：使用模糊匹配 (in)，躲過括號跟全半形名稱的地雷
+                        if "營業收入" in t and "淨" not in t:
                             revenue = row.get("value", 0)
-                        elif t in ["營業毛利（毛損）", "營業毛利（毛損）淨額", "營業毛利(毛損)", "營業毛利"]:
+                        if "毛利" in t:
                             gross_profit = row.get("value", 0)
                             
                 if revenue > 0:
-                    # 計算毛利率: (營業毛利 / 營業收入) * 100
                     return round((gross_profit / revenue) * 100, 2)
     except Exception as e:
         print(f"FinMind Margin Error: {e}")
@@ -130,7 +139,6 @@ async def fetch_stock_info(stock_id: str) -> dict:
             tasks.append(fetch_finmind_revenue(session, stock_id))
             tasks.append(fetch_finmind_margin(session, stock_id))
             
-        # 🚀 齊發！同時等待所有 API 回應
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         yahoo_data = results[0] if isinstance(results[0], dict) else {}
@@ -139,7 +147,6 @@ async def fetch_stock_info(stock_id: str) -> dict:
         if not yahoo_data:
             return {}
             
-        # 拆解財報數據 (如果是 ETF，預設就是 0.0，因為大腦本來就不看)
         revenue_yoy = 0.0
         gross_margin = 0.0
         
