@@ -36,7 +36,7 @@ def build_stock_flex_message(data: dict) -> dict:
             "layout": "horizontal",
             "contents": [
               {"type": "text", "text": "最新股價", "size": "sm", "color": "#888888", "flex": 1},
-              {"type": "text", "text": f"${price}", "size": "sm", "color": "#111111", "align": "end", "flex": 2, "weight": "bold"}
+              {"type": "text", "text": f"${price:,.2f}", "size": "sm", "color": "#111111", "align": "end", "flex": 2, "weight": "bold"}
             ]
           },
           {

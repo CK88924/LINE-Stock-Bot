@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from core.repositories.stock_fetcher import fetch_stock_info
 from core.repositories.sheets_db import get_user_settings, upsert_stock_data
 
@@ -18,9 +18,9 @@ async def analyze_and_decide(stock_id: str) -> dict:
     stock_data = results[0] if not isinstance(results[0], Exception) else {}
     user_settings = results[1] if not isinstance(results[1], Exception) else {}
     
-    # 若抓不到基本資料，提供退路
+    # 若抓不到基本資料，提供退路 (防呆機制：回傳錯誤標記)
     if not stock_data:
-        return {"error": True, "message": f"查無代號 {stock_id}，請確認是否輸入完整的台股代號（如 0050）。"}
+        return {"error": True, "message": f"查無代號 {stock_id}，請確認是否輸入完整的台股代號（如 0050、2330）。"}
         
     # 取出設定閾值 (使用預設值防呆)
     min_margin = float(user_settings.get("MIN_MARGIN_PERCENT", 30.0))
@@ -34,24 +34,36 @@ async def analyze_and_decide(stock_id: str) -> dict:
     rev_yoy = stock_data.get("revenue_yoy", 0.0)
     inst_buy = stock_data.get("institutional_buy", 0)
     
+    # 🚨 新增：判斷是否為 ETF (台股 ETF 通常以 00 開頭)
+    is_etf = stock_id.startswith("00")
+    
     # 策略判定：符合所有條件則標示為買進，否則觀望
     decision = "買進 (BUY)"
     reasons = []
     
-    if margin < min_margin:
-        reasons.append(f"毛利率 {margin}% < 門檻 {min_margin}%")
-    if rev_yoy < min_revenue_yoy:
-        reasons.append(f"營收YoY {rev_yoy}% < 門檻 {min_revenue_yoy}%")
-    if inst_buy < min_inst_buy:
-        reasons.append(f"投信買超 {inst_buy} < 門檻 {min_inst_buy}")
+    if is_etf:
+        # ETF 專屬邏輯：不看毛利與營收，目前只比對投信買超
+        if inst_buy < min_inst_buy:
+            reasons.append(f"投信買超 {inst_buy} < 門檻 {min_inst_buy}")
+    else:
+        # 個股邏輯：全方位比對
+        if margin < min_margin:
+            reasons.append(f"毛利率 {margin}% < 門檻 {min_margin}%")
+        if rev_yoy < min_revenue_yoy:
+            reasons.append(f"營收YoY {rev_yoy}% < 門檻 {min_revenue_yoy}%")
+        if inst_buy < min_inst_buy:
+            reasons.append(f"投信買超 {inst_buy} < 門檻 {min_inst_buy}")
         
     if reasons:
          decision = "觀望 (HOLD)"
     else:
-         reasons.append("符合所有進場策略指標！")
+         # 依據標的類型給予不同的成功提示
+         success_msg = "符合籌碼面進場指標！(ETF不看財報)" if is_etf else "符合所有基本面與籌碼面指標！"
+         reasons.append(success_msg)
          
-    # 紀錄當下時間
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 🚨 紀錄當下時間 (修正為台灣時間 UTC+8)
+    tz_tw = timezone(timedelta(hours=8))
+    current_time = datetime.now(tz_tw).strftime("%Y-%m-%d %H:%M:%S")
     
     # 準備寫入資料庫的陣列結構 (對應 A:H 欄)
     # [StockID, Time, Price, Volume, Margin, Rev_YoY, Inst_Buy, Decision]

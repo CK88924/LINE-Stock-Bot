@@ -21,6 +21,7 @@ from linebot.v3.messaging import (
     Configuration,
     ReplyMessageRequest,
     FlexMessage,
+    TextMessage,
     FlexContainer
 )
 from linebot.v3.webhooks import (
@@ -77,6 +78,18 @@ async def callback(request: Request):
             
             # 核心：非同步擷取資料與判定
             result_data = await analyze_and_decide(stock_id)
+            # 🚨 新增這段：如果是「查無股票」的錯誤，直接回傳純文字，提早結束！
+            if result_data.get("error"):
+                try:
+                    await line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=result_data.get("message"))]
+                        )
+                    )
+                except Exception as e:
+                    logging.error(f"Error sending LINE text message: {e}")
+                continue # 提早結束，不要執行下面的 Flex Message 畫圖邏輯
             
             # 視圖：將策略轉為 Flex Message JSON Dict
             flex_dict = build_stock_flex_message(result_data)
