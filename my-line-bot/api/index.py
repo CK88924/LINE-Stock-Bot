@@ -7,7 +7,7 @@ import asyncio
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from core.config import settings
 from core.services.strategy_service import analyze_and_decide
@@ -37,6 +37,14 @@ parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 @app.get("/")
 async def root():
     return JSONResponse(content={"status": "alive", "message": "LINE Stock Bot is running"})
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    # favicon is stored at ../public/favicon.ico relative to this index.py file
+    favicon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public", "favicon.ico")
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path)
+    return JSONResponse(status_code=404, content={"message": "Favicon not found"})
 
 @app.post("/api/index.py")
 @app.post("/")
