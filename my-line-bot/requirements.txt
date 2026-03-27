@@ -2,7 +2,7 @@ fastapi
 uvicorn
 line-bot-sdk
 aiohttp
-gspread==5.12.1
+gspread
 gspread-asyncio
 google-auth
 python-dotenv
