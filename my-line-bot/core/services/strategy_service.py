@@ -20,10 +20,7 @@ async def analyze_and_decide(stock_id: str) -> dict:
     
     # 若抓不到基本資料，提供退路
     if not stock_data:
-        stock_data = {
-            "stock_id": stock_id, "price": 0.0, "volume": 0, 
-            "gross_margin": 0.0, "revenue_yoy": 0.0, "institutional_buy": 0
-        }
+        return {"error": True, "message": f"查無代號 {stock_id}，請確認是否輸入完整的台股代號（如 0050）。"}
         
     # 取出設定閾值 (使用預設值防呆)
     min_margin = float(user_settings.get("MIN_MARGIN_PERCENT", 30.0))
