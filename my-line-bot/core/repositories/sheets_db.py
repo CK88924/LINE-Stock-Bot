@@ -26,6 +26,23 @@ CACHE_TTL = 300  # 5 分鐘快取
 async def get_client():
     return await agcm.authorize()
 
+def format_ticker(ticker_val) -> str:
+    """ Formats and pads Taiwanese stock/ETF tickers (e.g. 919 -> 00919, 56 -> 0056) """
+    if ticker_val is None:
+        return ""
+    s = str(ticker_val).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    if s.isdigit():
+        val = int(s)
+        if val < 100:
+            return s.zfill(4)
+        elif 100 <= val <= 999:
+            return s.zfill(5)
+        elif val == 6208:
+            return s.zfill(6)
+    return s
+
 async def get_user_settings() -> dict:
     """ Reads settings from '設定' sheet with 5 minute cache """
     global _settings_cache, _cache_time
@@ -64,6 +81,10 @@ async def upsert_stock_data(stock_id: str, data: list):
     動態 Upsert 寫入資料庫: 
     使用 stock_id 搜尋 A 欄，若存在則覆蓋該列，不存在則新增到最底下
     """
+    stock_id = format_ticker(stock_id)
+    if len(data) > 0:
+        data[0] = format_ticker(data[0])
+        
     client = await get_client()
     try:
         sh = await client.open_by_key(settings.SPREADSHEET_ID)
@@ -100,10 +121,13 @@ async def get_financial_user_settings() -> dict:
         for i, header in enumerate(headers):
             if i < len(row):
                 val = row[i].strip()
-                try:
-                    settings_dict[header] = float(val) if '.' in val else int(val)
-                except ValueError:
-                    settings_dict[header] = val
+                if header == "STRATEGY_FOCUS_TICKER":
+                    settings_dict[header] = format_ticker(val)
+                else:
+                    try:
+                        settings_dict[header] = float(val) if '.' in val else int(val)
+                    except ValueError:
+                        settings_dict[header] = val
         return settings_dict
     except Exception as e:
         print(f"Error reading USER_SETTINGS: {e}")
@@ -124,7 +148,7 @@ async def get_my_holdings() -> list:
         # Header: ['Ticker', 'Shares']
         for row in values[1:]:
             if len(row) >= 2 and row[0].strip():
-                ticker = row[0].strip()
+                ticker = format_ticker(row[0].strip())
                 try:
                     shares = float(row[1].strip())
                 except ValueError:
@@ -181,7 +205,7 @@ async def get_stock_db_data() -> dict:
         # Header: ['股票代號', '分析時間', '最新股價', '成交量', '毛利率(%)', '營收YoY(%)', '三大法人買超', '結算決策']
         for row in values[1:]:
             if len(row) >= 3 and row[0].strip():
-                stock_id = row[0].strip()
+                stock_id = format_ticker(row[0].strip())
                 try:
                     price = float(row[2].strip())
                 except ValueError:
@@ -221,6 +245,7 @@ async def get_stock_db_data() -> dict:
 
 async def fetch_dividend_past_year(ticker: str) -> float:
     """ Fetch the sum of cash dividends distributed in the past 365 days from FinMind """
+    ticker = format_ticker(ticker)
     try:
         async with aiohttp.ClientSession() as session:
             # 查詢過去 450 天的除息資料，以包含當前的完整年度除息事件
