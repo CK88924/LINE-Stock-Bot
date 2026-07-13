@@ -10,8 +10,15 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 
 from core.config import settings
-from core.services.strategy_service import analyze_and_decide
-from core.views.line_flex_builder import build_stock_flex_message
+from core.services.strategy_service import analyze_and_decide, get_strategy_recommendation
+from core.services.progress_service import calculate_progress
+from core.services.expense_service import calculate_expenses
+from core.views.line_flex_builder import (
+    build_stock_flex_message,
+    build_progress_flex_message,
+    build_strategy_flex_message,
+    build_expense_flex_message
+)
 
 from linebot.v3 import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
@@ -22,7 +29,10 @@ from linebot.v3.messaging import (
     ReplyMessageRequest,
     FlexMessage,
     TextMessage,
-    FlexContainer
+    FlexContainer,
+    QuickReply,
+    QuickReplyItem,
+    MessageAction
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -70,43 +80,143 @@ async def callback(request: Request):
 
             user_text = event.message.text.strip()
             
-            # 簡單過濾，若使用者輸入非英文與數字 (通常台股代號為純數字)
-            if not user_text.isalnum():
+            # 取得用戶的 line user id
+            user_id = getattr(event.source, "user_id", "")
+            is_authorized_user = (user_id == "U16a829b0c0ad6b0aa565bb6a54944c88")
+            
+            # 清理表情符號以進行指令比對
+            clean_text = user_text.replace("📊", "").replace("💡", "").replace("📅", "").strip()
+            
+            # 定義 Quick Reply 鍵盤按鈕 (僅限授權用戶使用)
+            quick_reply = None
+            if is_authorized_user:
+                quick_reply = QuickReply(
+                    items=[
+                        QuickReplyItem(action=MessageAction(label="📊 目前進度", text="目前進度")),
+                        QuickReplyItem(action=MessageAction(label="💡 推進建議", text="推進建議")),
+                        QuickReplyItem(action=MessageAction(label="📅 開銷檢查", text="開銷檢查"))
+                    ]
+                )
+            
+            # 路由處理
+            # 如果是授權用戶，且輸入為指令，則進行指令處理
+            if is_authorized_user and clean_text == "目前進度":
+                try:
+                    progress_data = await calculate_progress()
+                    flex_dict = build_progress_flex_message(progress_data)
+                    flex_container = FlexContainer.from_dict(flex_dict)
+                    flex_message = FlexMessage(alt_text="大水庫財務進度 📊", contents=flex_container, quick_reply=quick_reply)
+                    
+                    await line_bot_api.reply_message(
+                        ReplyMessageRequest(reply_token=event.reply_token, messages=[flex_message])
+                    )
+                except Exception as e:
+                    logging.error(f"Error processing progress command: {e}")
+                    try:
+                        await line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=f"處理進度查詢時發生錯誤: {e}", quick_reply=quick_reply)]
+                            )
+                        )
+                    except Exception:
+                        pass
                 continue
                 
-            stock_id = user_text
-            
-            # 核心：非同步擷取資料與判定
-            result_data = await analyze_and_decide(stock_id)
-            # 🚨 新增這段：如果是「查無股票」的錯誤，直接回傳純文字，提早結束！
-            if result_data.get("error"):
+            elif is_authorized_user and clean_text == "推進建議":
+                try:
+                    strategy_data = await get_strategy_recommendation()
+                    flex_dict = build_strategy_flex_message(strategy_data)
+                    flex_container = FlexContainer.from_dict(flex_dict)
+                    flex_message = FlexMessage(alt_text="投資推進建議 💡", contents=flex_container, quick_reply=quick_reply)
+                    
+                    await line_bot_api.reply_message(
+                        ReplyMessageRequest(reply_token=event.reply_token, messages=[flex_message])
+                    )
+                except Exception as e:
+                    logging.error(f"Error processing strategy command: {e}")
+                    try:
+                        await line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=f"處理推進建議時發生錯誤: {e}", quick_reply=quick_reply)]
+                            )
+                        )
+                    except Exception:
+                        pass
+                continue
+                
+            elif is_authorized_user and clean_text == "開銷檢查":
+                try:
+                    expense_data = await calculate_expenses()
+                    flex_dict = build_expense_flex_message(expense_data)
+                    flex_container = FlexContainer.from_dict(flex_dict)
+                    flex_message = FlexMessage(alt_text="年度固定開銷檢查 📅", contents=flex_container, quick_reply=quick_reply)
+                    
+                    await line_bot_api.reply_message(
+                        ReplyMessageRequest(reply_token=event.reply_token, messages=[flex_message])
+                    )
+                except Exception as e:
+                    logging.error(f"Error processing expense command: {e}")
+                    try:
+                        await line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=f"處理開銷檢查時發生錯誤: {e}", quick_reply=quick_reply)]
+                            )
+                        )
+                    except Exception:
+                        pass
+                continue
+                
+            # 檢查是否為台灣個股代號 (通用查詢股票，所有人都可以使用)
+            elif clean_text.isalnum() and 4 <= len(clean_text) <= 6:
+                stock_id = clean_text
+                result_data = await analyze_and_decide(stock_id)
+                
+                if result_data.get("error"):
+                    try:
+                        await line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=result_data.get("message"), quick_reply=quick_reply)]
+                            )
+                        )
+                    except Exception as e:
+                        logging.error(f"Error sending LINE text message: {e}")
+                    continue
+                
+                flex_dict = build_stock_flex_message(result_data)
+                
+                try:
+                    flex_container = FlexContainer.from_dict(flex_dict)
+                    flex_message = FlexMessage(alt_text=f"{stock_id} 策略分析", contents=flex_container, quick_reply=quick_reply)
+                    
+                    await line_bot_api.reply_message(
+                        ReplyMessageRequest(reply_token=event.reply_token, messages=[flex_message])
+                    )
+                except Exception as e:
+                    logging.error(f"Error sending LINE message: {e}")
+                continue
+                
+            # 如果是授權用戶，但輸入非上述項目，則回覆大水庫功能歡迎選單
+            elif is_authorized_user:
+                welcome_msg = (
+                    "👋 您好！我是大水庫財務助理。\n\n"
+                    "請點擊下方選單按鈕進行快速查詢，或直接輸入台灣股票/ETF代號（例如：00919、2330）進行即時個股與籌碼策略分析！"
+                )
                 try:
                     await line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
-                            messages=[TextMessage(text=result_data.get("message"))]
+                            messages=[TextMessage(text=welcome_msg, quick_reply=quick_reply)]
                         )
                     )
                 except Exception as e:
-                    logging.error(f"Error sending LINE text message: {e}")
-                continue # 提早結束，不要執行下面的 Flex Message 畫圖邏輯
+                    logging.error(f"Error sending default menu message: {e}")
             
-            # 視圖：將策略轉為 Flex Message JSON Dict
-            flex_dict = build_stock_flex_message(result_data)
-            
-            try:
-                # v3 寫法：轉換為 FlexContainer 類別
-                flex_container = FlexContainer.from_dict(flex_dict)
-                flex_message = FlexMessage(alt_text=f"{stock_id} 策略分析", contents=flex_container)
-                
-                # 傳遞回 LINE 伺服器
-                await line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[flex_message]
-                    )
-                )
-            except Exception as e:
-                logging.error(f"Error sending LINE message: {e}")
+            # 其他一般使用者，輸入非股票代號直接過濾跳過，不進行任何回覆，完全不影響原先功能
+            else:
+                continue
 
     return JSONResponse(content={"status": "OK"})

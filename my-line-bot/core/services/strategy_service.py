@@ -68,6 +68,7 @@ async def analyze_and_decide(stock_id: str) -> dict:
     
     await upsert_stock_data(stock_id, db_row)
     
+    
     return {
         "stock_id": stock_id,
         "time": current_time,
@@ -79,3 +80,66 @@ async def analyze_and_decide(stock_id: str) -> dict:
         "decision": decision,
         "reasons": reasons
     }
+
+async def get_strategy_recommendation() -> dict:
+    """
+    推進建議服務：
+    1. 讀取 USER_SETTINGS 中的每月薪水 (MONTHLY_SALARY)、大水庫目標 (TARGET_ANNUAL_DIVIDEND) 與焦點標的 (STRATEGY_FOCUS_TICKER)
+    2. 取得焦點標的之最新股價，並計算買進「一張 (1000股)」之成本
+    3. 計算「本月可買」(等於 MONTHLY_SALARY) 與「下張差額」(一張成本 - 每月薪水，最少為 0)
+    4. 呼叫進度服務取得目前總年配息
+    5. 取得焦點標的過去一年總配息，計算距離目標額之額外持股股數、總成本、以及達標所需月份 (不含複利之保守估計)
+    """
+    from core.services.progress_service import calculate_progress
+    from core.repositories.sheets_db import get_financial_user_settings, get_stock_db_data, fetch_dividend_past_year
+    
+    user_settings = await get_financial_user_settings()
+    db_data = await get_stock_db_data()
+    
+    monthly_salary = float(user_settings.get("MONTHLY_SALARY", 0.0))
+    target_dividend = float(user_settings.get("TARGET_ANNUAL_DIVIDEND", 0.0))
+    focus_ticker = str(user_settings.get("STRATEGY_FOCUS_TICKER", "")).strip()
+    
+    # 確保焦點標的在資料庫中有資料
+    if focus_ticker not in db_data or db_data[focus_ticker].get("price", 0.0) == 0.0:
+        await analyze_and_decide(focus_ticker)
+        db_data = await get_stock_db_data()
+        
+    focus_data = db_data.get(focus_ticker, {})
+    focus_price = float(focus_data.get("price", 0.0))
+    
+    # 一張 (1000股) 成本
+    one_lot_cost = focus_price * 1000
+    diff_for_next_lot = max(0.0, one_lot_cost - monthly_salary)
+    
+    # 取得目前進度以獲得距離目標配息的差額
+    progress_data = await calculate_progress()
+    total_annual_dividend = progress_data["total_annual_dividend"]
+    remaining_dividend_needed = max(0.0, target_dividend - total_annual_dividend)
+    
+    # 取得焦點標的的每股年配息
+    focus_dividend_per_share = await fetch_dividend_past_year(focus_ticker)
+    
+    if focus_dividend_per_share > 0:
+        additional_shares_needed = remaining_dividend_needed / focus_dividend_per_share
+        total_cost_needed = additional_shares_needed * focus_price
+        months_needed = total_cost_needed / monthly_salary if monthly_salary > 0 else 0.0
+    else:
+        additional_shares_needed = 0.0
+        total_cost_needed = 0.0
+        months_needed = 0.0
+        
+    return {
+        "monthly_salary": monthly_salary,
+        "target_annual_dividend": target_dividend,
+        "focus_ticker": focus_ticker,
+        "focus_price": focus_price,
+        "one_lot_cost": one_lot_cost,
+        "diff_for_next_lot": diff_for_next_lot,
+        "total_annual_dividend": total_annual_dividend,
+        "remaining_dividend_needed": remaining_dividend_needed,
+        "focus_dividend_per_share": focus_dividend_per_share,
+        "additional_shares_needed": additional_shares_needed,
+        "total_cost_needed": total_cost_needed,
+        "months_needed": months_needed
+    }
