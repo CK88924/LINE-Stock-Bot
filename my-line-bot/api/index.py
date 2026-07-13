@@ -82,7 +82,8 @@ async def callback(request: Request):
             
             # 取得用戶的 line user id 并去空格
             user_id = getattr(event.source, "user_id", "").strip()
-            is_authorized_user = (user_id == "U16a829b0c0ad6b0aa565bb6a54944c88")
+            # 💡 偵錯用：暫時將所有人設為授權用戶，以便您可以查看到您的 User ID 並測試選單按鈕
+            is_authorized_user = True
             logging.info(f"DEBUG: Received message from user_id: '{user_id}' (len={len(user_id)}), is_authorized: {is_authorized_user}")
             
             # 清理表情符號以進行指令比對
@@ -204,6 +205,7 @@ async def callback(request: Request):
             elif is_authorized_user:
                 welcome_msg = (
                     "👋 您好！我是大水庫財務助理。\n\n"
+                    f"您的 LINE User ID 為：\n{user_id}\n\n"
                     "請點擊下方選單按鈕進行快速查詢，或直接輸入台灣股票/ETF代號（例如：00919、2330）進行即時個股與籌碼策略分析！"
                 )
                 try:
