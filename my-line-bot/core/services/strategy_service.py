@@ -84,7 +84,7 @@ async def analyze_and_decide(stock_id: str) -> dict:
 async def get_strategy_recommendation() -> dict:
     """
     推進建議服務：
-    1. 讀取 USER_SETTINGS 中的每月薪水 (MONTHLY_SALARY)、大水庫目標 (TARGET_ANNUAL_DIVIDEND) 與焦點標的 (STRATEGY_FOCUS_TICKER)
+    1. 讀取 USER_SETTINGS 中的每月薪水 (MONTHLY_SALARY)、ETF目標 (TARGET_ANNUAL_DIVIDEND) 與焦點標的 (STRATEGY_FOCUS_TICKER)
     2. 取得焦點標的之最新股價，並計算買進「一張 (1000股)」之成本
     3. 計算「本月可買」(等於 MONTHLY_SALARY) 與「下張差額」(一張成本 - 每月薪水，最少為 0)
     4. 呼叫進度服務取得目前總年配息

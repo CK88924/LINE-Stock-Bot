@@ -136,15 +136,11 @@ async def get_my_holdings() -> list:
         return []
 
 async def get_annual_expenses() -> list:
-    """ Reads annual expenses from '工作表5' (ANNUAL_EXPENSES) sheet """
+    """ Reads annual expenses from 'ANNUAL_EXPENSES' sheet """
     client = await get_client()
     try:
         sh = await client.open_by_key(settings.SPREADSHEET_ID)
-        # 為了容錯，優先讀取 '工作表5'，如果不存在則讀取 'ANNUAL_EXPENSES'
-        try:
-            worksheet = await sh.worksheet("工作表5")
-        except Exception:
-            worksheet = await sh.worksheet("ANNUAL_EXPENSES")
+        worksheet = await sh.worksheet("ANNUAL_EXPENSES")
             
         values = await worksheet.get_all_values()
         

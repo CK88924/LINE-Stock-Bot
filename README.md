@@ -1,11 +1,11 @@
-# 🤖 LINE ETF & 大水庫財務助理 Bot (LINE Stock Bot)
+# 🤖 LINE ETF 財務助理 Bot (LINE Stock Bot)
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/)
 [![LINE](https://img.shields.io/badge/LINE-00C300?style=for-the-badge&logo=line&logoColor=white)](https://developers.line.biz/)
 [![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 
-整合**台股基本面分析**與 **ETF 被動收入（大水庫）管理** 的智慧型 LINE 機器人。本機器人結合了個股籌碼分析與個人長期財務規劃，可透過 Google Sheets 進行輕量級資料管理與參數自訂。
+整合**台股基本面分析**與 **ETF 被動收入管理** 的智慧型 LINE 機器人。本機器人結合了個股籌碼分析與個人長期財務規劃，可透過 Google Sheets 進行輕量級資料管理與參數自訂。
 
 ---
 
@@ -17,9 +17,9 @@
   - **ETF 系列**：專注於三大法人籌碼買超量，跳過財報基本面檢查。
 - 分析結果以綠色「買進 (BUY)」與橘色「觀望 (HOLD)」進行視覺化 Flex Message 呈現。
 
-### 2. 大水庫被動收入管理（授權用戶專屬）
-- 📈 **目前進度**：串接 FinMind API 抓取過去 365 天配息歷史，計算預估年配息額、大水庫目標達標率、與目標差額。
-- 💡 **推進建議**：依據每月預算與焦點推進標的，計算推進 1 張的預算差額，並推算達成大水庫目標所需的額外股數、投入資金與預估達標時間。
+### 2. ETF 被動收入管理（授權用戶專屬）
+- 📈 **目前進度**：串接 FinMind API 抓取過去 365 天配息歷史，計算預估年配息額、ETF 目標達標率、與目標差額。
+- 💡 **推進建議**：依據每月預算與焦點推進標的，計算推進 1 張的預算差額，並推算達成 ETF 目標所需的額外股數、投入資金與預估達標時間。
 - 📅 **開銷檢查**：自動對照當月（台灣時間）固定支出，並預警未來三個月內即將扣繳的年度開銷項目。
 - 🤖 **Quick Reply 鍵盤**：授權用戶專屬的滑動式快捷按鈕，一鍵輕鬆查詢。
 
@@ -37,7 +37,7 @@ FastAPI Webhook (Vercel)
 Financial Bot Engine
  ┌──┴───────────────┐
  ▼                  ▼
-[一般個股/ETF查詢]    [大水庫財務助理]
+[一般個股/ETF查詢]    [ETF財務助理]
                      ├── Progress Service (進度)
                      ├── Strategy Service (建議)
                      └── Expense Service  (開銷)
@@ -62,18 +62,19 @@ Financial Bot Engine
 - `MIN_INSTITUTIONAL_BUY`（最低法人買超量，預設 300 張）
 
 ### 3. `USER_SETTINGS` (財務規劃)
-大水庫計劃的核心財務設定：
+被動收入計劃的核心財務設定：
 - `MONTHLY_SALARY`（每月薪資/可投資預算，例如 28480）
-- `TARGET_ANNUAL_DIVIDEND`（大水庫年度配息目標，例如 120000）
+- `TARGET_ANNUAL_DIVIDEND`（年度配息目標，例如 120000）
 - `STRATEGY_FOCUS_TICKER`（本月推進焦點 ETF，例如 00919）
 
 ### 4. `MY_HOLDINGS` (目前持股)
 記錄您目前持有的 ETF 庫存（不保存股價，由程式自動比對動態計算）：
 - `Ticker`（股票代號）、`Shares`（持有股數）
 
-### 5. `工作表5` (年度固定開銷)
+### 5. `ANNUAL_EXPENSES` (年度固定開銷)
 記錄全年度預計扣繳的固定生活或訂閱費用：
 - `Item`（項目名稱）、`Cost`（金額）、`Month`（扣繳月份，1-12 數字）
+*註：工作表名稱必須設定為 `ANNUAL_EXPENSES`。*
 
 ---
 

@@ -106,7 +106,7 @@ async def callback(request: Request):
                     progress_data = await calculate_progress()
                     flex_dict = build_progress_flex_message(progress_data)
                     flex_container = FlexContainer.from_dict(flex_dict)
-                    flex_message = FlexMessage(alt_text="大水庫財務進度 📊", contents=flex_container, quick_reply=quick_reply)
+                    flex_message = FlexMessage(alt_text="ETF財務進度 📊", contents=flex_container, quick_reply=quick_reply)
                     
                     await line_bot_api.reply_message(
                         ReplyMessageRequest(reply_token=event.reply_token, messages=[flex_message])
@@ -200,7 +200,7 @@ async def callback(request: Request):
                     logging.error(f"Error sending LINE message: {e}")
                 continue
                 
-            # 如果是授權用戶，但輸入非上述項目，則回覆大水庫功能歡迎選單
+            # 如果是授權用戶，但輸入非上述項目，則回覆歡迎選單
             elif is_authorized_user:
                 welcome_msg = (
                     "👋 您好！我是ETF財務助理。\n\n"

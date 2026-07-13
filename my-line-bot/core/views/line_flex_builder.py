@@ -125,7 +125,7 @@ def build_progress_flex_message(data: dict) -> dict:
             "type": "box",
             "layout": "vertical",
             "contents": [
-                {"type": "text", "text": "📊 大水庫財務進度", "weight": "bold", "color": "#FFFFFF", "size": "lg"}
+                {"type": "text", "text": "📊 ETF 財務進度", "weight": "bold", "color": "#FFFFFF", "size": "lg"}
             ],
             "backgroundColor": "#2196F3"
         },
@@ -154,7 +154,7 @@ def build_progress_flex_message(data: dict) -> dict:
                     "type": "box",
                     "layout": "horizontal",
                     "contents": [
-                        {"type": "text", "text": "大水庫達標率", "size": "sm", "color": "#888888", "flex": 3},
+                        {"type": "text", "text": "ETF 達標率", "size": "sm", "color": "#888888", "flex": 3},
                         {"type": "text", "text": f"{achievement_rate:.2f}%", "size": "md", "color": "#2196F3", "align": "end", "flex": 5, "weight": "bold"}
                     ]
                 },
@@ -271,7 +271,7 @@ def build_strategy_flex_message(data: dict) -> dict:
                 {"type": "separator", "margin": "lg"},
                 {
                     "type": "text",
-                    "text": "🚀 終極目標 (大水庫) 達標預估",
+                    "text": "🚀 終極目標 (ETF) 達標預估",
                     "size": "sm",
                     "weight": "bold",
                     "color": "#111111",
