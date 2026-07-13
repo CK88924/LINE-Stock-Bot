@@ -80,9 +80,10 @@ async def callback(request: Request):
 
             user_text = event.message.text.strip()
             
-            # 取得用戶的 line user id
-            user_id = getattr(event.source, "user_id", "")
+            # 取得用戶的 line user id 并去空格
+            user_id = getattr(event.source, "user_id", "").strip()
             is_authorized_user = (user_id == "U16a829b0c0ad6b0aa565bb6a54944c88")
+            logging.info(f"DEBUG: Received message from user_id: '{user_id}' (len={len(user_id)}), is_authorized: {is_authorized_user}")
             
             # 清理表情符號以進行指令比對
             clean_text = user_text.replace("📊", "").replace("💡", "").replace("📅", "").strip()

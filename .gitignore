@@ -1,0 +1,10 @@
+# Excel database
+*.xlsx
+LINE Stock Bot.xlsx
+
+# Python cache and environment
+__pycache__/
+*.pyc
+.env
+.vercel
+/scratch/
