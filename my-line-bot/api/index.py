@@ -203,7 +203,7 @@ async def callback(request: Request):
             # 如果是授權用戶，但輸入非上述項目，則回覆大水庫功能歡迎選單
             elif is_authorized_user:
                 welcome_msg = (
-                    "👋 您好！我是大水庫財務助理。\n\n"
+                    "👋 您好！我是ETF財務助理。\n\n"
                     "請點擊下方選單按鈕進行快速查詢，或直接輸入台灣股票/ETF代號（例如：00919、2330）進行即時個股與籌碼策略分析！"
                 )
                 try:
